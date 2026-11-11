@@ -14,7 +14,7 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::MAX_APP_NUM;
+use crate::config::{MAX_APP_NUM, MAX_SYSCALL_ID};
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
 use lazy_static::*;
@@ -47,6 +47,9 @@ pub struct TaskManagerInner {
     current_task: usize,
 }
 
+
+static mut TASK_SYSCALL_IDS:[usize;MAX_APP_NUM*MAX_SYSCALL_ID] = [0usize;MAX_APP_NUM * MAX_SYSCALL_ID];
+
 lazy_static! {
     /// Global variable: TASK_MANAGER
     pub static ref TASK_MANAGER: TaskManager = {
@@ -54,6 +57,7 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            // syscall_id_counts: [0u32; MAX_SYSCALL_ID],
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -135,6 +139,12 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+    /// get the current task id
+    fn current_task_id(&self)->usize{
+        let inner = self.inner.exclusive_access();
+        inner.current_task
+    }
+
 }
 
 /// Run the first task in task list.
@@ -168,4 +178,34 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+
+
+/// record syscall
+pub fn record_syscall(id:usize){
+    // let current_id = current_task_id();
+    // TASK_MANAGER
+    // TASK_MANAGER.record_syscall(id);
+    let current = TASK_MANAGER.current_task_id();
+    
+    if id < MAX_SYSCALL_ID{
+        unsafe{
+            TASK_SYSCALL_IDS[current * MAX_SYSCALL_ID + id] +=1;
+        }
+    }
+}
+
+/// print syscall count
+pub fn print_syscall_count(id:usize)->usize{
+    // TASK_MANAGER.print_syscall_count(id)
+    if id < MAX_SYSCALL_ID{
+        let current = TASK_MANAGER.current_task_id();
+        
+        unsafe{
+            TASK_SYSCALL_IDS[current * MAX_SYSCALL_ID + id]
+        }
+    }else{
+        0
+    }
 }
