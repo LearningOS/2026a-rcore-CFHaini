@@ -71,4 +71,99 @@ task::run_first_task()
 2. 其他的功能实现与方法A类似
 
 ## Chapter3 简答题
+>问题一： 正确进入 U 态后，程序的特征还应有：使用 S 态特权指令，访问 S 态寄存器后会报错。请同学们可以自行测试这些内容（运行 三个 bad 测例 (ch2b_bad_*.rs) ）， 描述程序出错行为，同时注意注明你使用的 sbi 及其版本。<br>
 
+**解答：**
+```
+Rustsbi 版本为0.4.1 ，RISCV SBI 版本为 2.0
+
+ch2b_bad_address.rs 出错行为：
+[kernel] PageFault in application, bad addr = 0x0, bad instruction = 0x804003a4, kernel killed it.
+
+ch2b_bad_instructions.rs 出错行为：
+[kernel] IllegalInstruction in application, kernel killed it.
+
+ch2b_bad_register.rs 出错行为：
+[kernel] IllegalInstruction in application, kernel killed it.
+```
+
+> 问题二：深入理解 trap.S 中两个函数 __alltraps 和 __restore 的作用，并回答如下问题:
+
+
+>L40：刚进入 __restore 时，sp 代表了什么值。请指出 __restore 的两种使用情景。
+
+**解答：**
+```text
+sp 代表了 当前要恢复应用的内核栈，其中的内核栈 栈帧指向了构造的 TrapContext.
+
+__restore的使用场景：
+1.构造初始的TaskContext时作为 寄存器ra的返回值，来使用应用能够第一次进入U态
+2.已经换出的应用的TrapContext的切换
+
+```
+
+>L43-L48：这几行汇编代码特殊处理了哪些寄存器？这些寄存器的的值对于进入用户态有何意义？请分别解释。<br>
+
+```
+ld t0, 32*8(sp)
+ld t1, 33*8(sp)
+ld t2, 2*8(sp)
+csrw sstatus, t0
+csrw sepc, t1
+csrw sscratch, t2
+```
+**解答：**
+```
+特殊处理了 sstatus sepc sscratch 寄存器，
+其中 sstatus 记录了trap前的CPU运行级别，方便之后的CPU运行级别的恢复
+sepc 记录了trap返回之后应该执行的指令地址
+sscratch 作为中转寄存器来保存和恢复寄存器
+```
+
+>L50-L56：为何跳过了 x2 和 x4？
+
+```
+ld x1, 1*8(sp)
+ld x3, 3*8(sp)
+.set n, 5
+.rept 27
+   LOAD_GP %n
+   .set n, n+1
+.endr
+```
+
+**解答：**
+```
+x2为 sp寄存器，因为经过 csrrw sp, sscratch,sp 指令之后，当前我们正在使用的sp寄存器为内核栈的指针，并不是我们要保存的用户栈的指针，只有在将其他的通用寄存器保存之后，才能保存 sepc sscratch sstatus等特殊寄存器
+
+x4 为 thread pointer ,应用使用不到
+```
+
+>L60：该指令之后，sp 和 sscratch 中的值分别有什么意义？
+
+**解答：**
+```
+sp 指向了应用的应用态栈 ，sscratch指向了 应用的内核栈
+```
+
+>__restore：中发生状态切换在哪一条指令？为何该指令执行之后会进入用户态？
+
+**解答：**
+```
+sret 指令发生状态切换
+该指令会使用CPU按照当前的特权级别将 sstatus 的 SPP字段设置为 U或者S ，之后会跳转到spec 寄存器指向的指令，继续执行
+```
+
+>L13：该指令之后，sp 和 sscratch 中的值分别有什么意义？
+
+**解答：**
+```
+sp 指向了应用的内核栈 ,sscratch 记录了应用执行过程中的应用栈
+```
+
+>从 U 态进入 S 态是哪一条指令发生的？
+
+**解答：**
+```
+ecall 指令
+```
